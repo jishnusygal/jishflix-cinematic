@@ -1,0 +1,52 @@
+services:
+  jishflix:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      JELLYFIN_URL: ${JELLYFIN_URL:-http://host.docker.internal:8096}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env to a random secret of at least 32 characters}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SESSION_TTL: ${SESSION_TTL:-604800}
+      IPTV_M3U_URL: ${IPTV_M3U_URL:-}
+      IPTV_XMLTV_URL: ${IPTV_XMLTV_URL:-}
+    ports:
+      - '127.0.0.1:8000:8000'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    user: '999:1000'
+    command: ['redis-server', '--save', '', '--appendonly', 'no', '--maxmemory', '256mb', '--maxmemory-policy', 'noeviction']
+    networks:
+      - internal
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    read_only: true
+    tmpfs:
+      - /data:size=16m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+networks:
+  internal:

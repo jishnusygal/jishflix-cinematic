@@ -1,0 +1,21 @@
+services:
+  jishflix:
+    environment:
+      PUBLIC_URL: https://${JISHFLIX_DOMAIN:?Set JISHFLIX_DOMAIN}
+      COOKIE_SECURE: 'true'
+    networks:
+      - internal
+      - traefik
+    labels:
+      traefik.enable: 'true'
+      traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
+      traefik.http.routers.jishflix.rule: Host(`${JISHFLIX_DOMAIN}`)
+      traefik.http.routers.jishflix.entrypoints: websecure
+      traefik.http.routers.jishflix.tls: 'true'
+      traefik.http.routers.jishflix.tls.certresolver: ${TRAEFIK_CERT_RESOLVER:-letsencrypt}
+      traefik.http.services.jishflix.loadbalancer.server.port: '8000'
+      traefik.http.services.jishflix.loadbalancer.responseforwarding.flushinterval: '-1ms'
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}

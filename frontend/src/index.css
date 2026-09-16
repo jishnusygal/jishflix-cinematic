@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { --canvas: #080b10; --surface: #141920; --accent: #55e4df; --muted: #a2abb8; color-scheme: dark; }
+  body { @apply m-0 bg-canvas text-slate-100 antialiased; }
+  button, a, input, select { @apply touch-manipulation; }
+  button:disabled { @apply cursor-wait opacity-50; }
+  :focus-visible { @apply outline-none ring-2 ring-cyan-500 ring-offset-4 ring-offset-canvas; }
+  h1, h2, h3 { text-wrap: balance; }
+  ::selection { @apply bg-cyan-300 text-slate-950; }
+  * { scrollbar-width: thin; scrollbar-color: #36414e transparent; }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-thumb { @apply rounded-full bg-slate-700; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  }
+}
+@layer components {
+  .btn { @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold transition-all duration-200 active:scale-95; }
+  .btn-primary { @apply btn bg-accent text-slate-950 hover:bg-cyan-100; }
+  .btn-secondary { @apply btn border border-white/10 bg-white/10 text-white backdrop-blur-md hover:bg-white/20; }
+  .icon-btn { @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/20 text-slate-200 transition-colors hover:bg-white/10; }
+  .field { @apply min-h-12 w-full rounded-lg border border-white/15 bg-slate-900/80 px-4 py-3 text-sm text-white placeholder:text-slate-500; }
+  .eyebrow { @apply text-[11px] font-semibold uppercase tracking-[.24em] text-accent; }
+  .glass { @apply border border-white/10 bg-slate-950/80 shadow-cinema backdrop-blur-xl; }
+  .media-focus { @apply transition-all duration-200 focus-visible:scale-105 focus-visible:ring-2 focus-visible:ring-cyan-500; }
+}

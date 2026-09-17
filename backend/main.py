@@ -6,6 +6,7 @@ import redis.asyncio as redis
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import SecretStr
 from redis.exceptions import RedisError
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import FileResponse, JSONResponse
 
 from backend.config import get_settings
@@ -45,7 +46,7 @@ class SecurityHeaders:
                 headers.extend([(b'x-content-type-options', b'nosniff'),
                     (b'x-frame-options', b'DENY'), (b'referrer-policy', b'no-referrer'),
                     (b'permissions-policy', b'camera=(), microphone=(), geolocation=()'),
-                    (b'content-security-policy', b"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")])
+                    (b'content-security-policy', b"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")])
                 if not any(k.lower() == b'cache-control' for k, _ in headers):
                     headers.append((b'cache-control', b'no-store'))
                 if self.settings.cookie_secure:
@@ -81,6 +82,7 @@ def create_app(settings=None, redis_client=None, upstream_transport=None):
     app.state.seerr = SeerrClient(secret_store, upstream_transport)
     app.state.whisparr = WhisparrClient(secret_store, upstream_transport)
     app.add_middleware(SecurityHeaders, settings=settings)
+    app.add_middleware(GZipMiddleware, minimum_size=500)
 
     @app.exception_handler(RedisError)
     async def cache_unavailable(request, exc):
@@ -116,11 +118,16 @@ def create_app(settings=None, redis_client=None, upstream_transport=None):
         target = (dist / path.lstrip('/')).resolve()
         if not target.is_relative_to(dist):
             raise HTTPException(404)
+        # Vite fingerprints everything under assets/ by content hash, so it's safe to cache
+        # forever; index.html (including the SPA fallback below) references those hashed
+        # filenames directly and must always be revalidated instead.
+        hashed_asset = target.is_file() and target.parent != dist
         if not target.is_file():
             target = dist / 'index.html'
         if not target.exists():
             return await JSONResponse({'detail': 'Build the frontend or run the Vite development server'}, status_code=503)(scope, receive, send)
-        await FileResponse(target)(scope, receive, send)
+        cache_control = 'public, max-age=31536000, immutable' if hashed_asset else 'no-cache'
+        await FileResponse(target, headers={'cache-control': cache_control})(scope, receive, send)
 
     app.mount('/', frontend_or_mcp)
     return app

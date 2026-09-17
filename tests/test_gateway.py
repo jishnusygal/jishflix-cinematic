@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -223,4 +224,17 @@ async def test_health_and_spa(environment):
     _, client, _ = environment
     assert (await client.get('/health/ready')).json() == {'status': 'ready'}
     assert (await client.get('/api/does-not-exist')).status_code == 404
-    assert (await client.get('/')).headers['x-content-type-options'] == 'nosniff'
+    result = await client.get('/')
+    assert result.headers['x-content-type-options'] == 'nosniff'
+    assert 'frame-src https://www.youtube-nocookie.com' in result.headers['content-security-policy']
+
+
+async def test_static_assets_cached_but_index_revalidates(environment):
+    _, client, _ = environment
+    assert (await client.get('/')).headers['cache-control'] == 'no-cache'
+    assert (await client.get('/some/unknown/spa/route')).headers['cache-control'] == 'no-cache'
+    asset = next((Path('frontend/dist/assets').glob('index-*.js')), None)
+    assert asset, 'frontend must be built for this test (npm run build)'
+    result = await client.get(f'/assets/{asset.name}')
+    assert result.status_code == 200
+    assert result.headers['cache-control'] == 'public, max-age=31536000, immutable'

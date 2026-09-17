@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js/dist/hls.light.mjs';
-import { X, Maximize, SkipBack, SkipForward, Play, Pause, Volume2, Music2, Gauge, Layers, AudioLines, Captions, Timer, BookOpen, Check } from 'lucide-react';
+import { X, Maximize, SkipBack, SkipForward, Play, Pause, Volume2, Music2, Gauge, Layers, AudioLines, Captions, Timer, BookOpen, Check, Wrench } from 'lucide-react';
 import { api, artwork, post } from '../api';
 import { useFocusScope } from '../hooks/useTVNavigation';
 
@@ -129,7 +129,7 @@ export default function VideoPlayer({item, onClose, onEnded}) {
       <MenuButton icon={Captions} label="Subtitles" value={subtitle} onChange={selectSubtitle} options={[{value: -1, label: 'Off'}, ...(info?.streams.filter(s => s.Type === 'Subtitle').map(s => ({value: s.Index, label: s.DisplayTitle || s.Language || `Track ${s.Index}`})) || [])]}/>
       {subtitle !== -1 && <label className="text-xs text-muted"><span className="flex items-center gap-1.5"><Timer size={13}/>Subtitle delay (s)</span><input type="number" step="0.25" min="-30" max="30" className="field mt-1 w-28" value={offset} onChange={e => setOffset(Number(e.target.value))}/></label>}
       {!!item.Chapters?.length && <MenuButton icon={BookOpen} label="Chapters" value={null} onChange={v => change({start_ticks: v})} options={item.Chapters.map((c, i) => ({value: c.StartPositionTicks, label: c.Name || `Chapter ${i + 1}`}))}/>}
-      <button className="btn-secondary text-xs" onClick={() => change({force_transcode: true})}>Compatibility mode</button>
+      <button className="icon-btn" aria-label="Compatibility mode: force a more widely supported format if playback is failing" onClick={() => change({force_transcode: true})}><Wrench size={18}/></button>
     </div></div>
   </div>;
 }

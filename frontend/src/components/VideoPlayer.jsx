@@ -1,8 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js/dist/hls.light.mjs';
-import { X, Maximize, SkipBack, SkipForward, Play, Pause, Volume2, Music2, Gauge, Layers, AudioLines, Captions, Timer, BookOpen } from 'lucide-react';
+import { X, Maximize, SkipBack, SkipForward, Play, Pause, Volume2, Music2, Gauge, Layers, AudioLines, Captions, Timer, BookOpen, Check } from 'lucide-react';
 import { api, artwork, post } from '../api';
 import { useFocusScope } from '../hooks/useTVNavigation';
+
+function MenuButton({icon: Icon, label, value, options, onChange}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = e => {if (!ref.current?.contains(e.target)) setOpen(false);};
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [open]);
+  return <div ref={ref} className="relative" onKeyDown={e => {if (open && e.key === 'Escape') {e.stopPropagation(); e.preventDefault(); setOpen(false);}}}>
+    <button className="icon-btn" aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(o => !o)}><Icon size={18}/></button>
+    {open && <div role="listbox" aria-label={label} className="absolute bottom-full left-1/2 z-20 mb-2 max-h-64 w-56 -translate-x-1/2 overflow-y-auto rounded-xl border border-white/10 bg-canvas/95 p-2 shadow-cinema backdrop-blur-xl">
+      <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</p>
+      {options.map(o => <button key={o.value} role="option" aria-selected={o.value === value} className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${o.value === value ? 'bg-accent/10 text-accent' : 'text-slate-200 hover:bg-white/5'}`} onClick={() => {onChange(o.value); setOpen(false);}}>{o.label}{o.value === value && <Check size={15}/>}</button>)}
+    </div>}
+  </div>;
+}
 
 export default function VideoPlayer({item, onClose, onEnded}) {
   const root = useRef(null), video = useRef(null), latest = useRef(null), position = useRef(item.UserData?.PlaybackPositionTicks || 0);
@@ -105,12 +123,12 @@ export default function VideoPlayer({item, onClose, onEnded}) {
     {/* display:none can pause playback on some browsers (iOS Safari); stay rendered but visually negligible instead. */}
     <video ref={video} controls={!isAudio} playsInline className={isAudio ? 'absolute h-px w-px overflow-hidden opacity-0' : 'min-h-0 w-full flex-1 bg-black'} aria-label={item.Name} crossOrigin="anonymous">{info?.subtitles.map(s => <track key={s.index} id={String(s.index)} kind="subtitles" src={s.url} srcLang={s.language} label={s.label}/>)}</video>
     <div className="bg-canvas p-5 md:px-10">{error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}{status && <p role="status" className="mb-3 text-xs text-muted">{status}</p>}<div className="flex flex-wrap items-center gap-3"><button className="icon-btn" aria-label={playing ? 'Pause' : 'Play'} onClick={() => playing ? video.current.pause() : video.current.play().catch(e => setError(e.message))}>{playing ? <Pause size={18}/> : <Play size={18}/>}</button><button className="icon-btn" aria-label="Back 10 seconds" onClick={() => seek(-10)}><SkipBack size={18}/></button><button className="icon-btn" aria-label="Forward 30 seconds" onClick={() => seek(30)}><SkipForward size={18}/></button><button className="icon-btn" aria-label="Toggle mute" onClick={() => {video.current.muted = !video.current.muted;}}><Volume2 size={18}/></button>{!isAudio && <button className="icon-btn" aria-label="Fullscreen" onClick={fullscreen}><Maximize size={18}/></button>}<span className="mr-auto text-xs text-muted">{info?.method === 'DirectPlay' ? 'Direct play' : info ? 'Transcoding' : 'Connecting'}</span>
-      <label className="text-xs text-muted"><span className="flex items-center gap-1.5"><Gauge size={13}/>Quality</span><select className="field mt-1" value={options.max_bitrate || 20000000} onChange={e => change({max_bitrate: Number(e.target.value), force_transcode: true})}><option value={20000000}>Auto · up to 20 Mbps</option><option value={8000000}>8 Mbps</option><option value={4000000}>4 Mbps</option><option value={1500000}>1.5 Mbps</option></select></label>
-      {!!info?.sources.length && <label className="text-xs text-muted"><span className="flex items-center gap-1.5"><Layers size={13}/>Version</span><select className="field mt-1 max-w-48" value={info.source_id} onChange={e => change({media_source_id: e.target.value})}>{info.sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
-      <label className="text-xs text-muted"><span className="flex items-center gap-1.5"><AudioLines size={13}/>Audio</span><select className="field mt-1 max-w-52" value={options.audio_index ?? ''} onChange={e => change({audio_index: e.target.value === '' ? null : Number(e.target.value), force_transcode: true})}><option value="">Default</option>{info?.streams.filter(s => s.Type === 'Audio').map(s => <option key={s.Index} value={s.Index}>{s.DisplayTitle || s.Language || `Track ${s.Index}`}</option>)}</select></label>
-      <label className="text-xs text-muted"><span className="flex items-center gap-1.5"><Captions size={13}/>Subtitles</span><select className="field mt-1 max-w-52" value={subtitle} onChange={e => selectSubtitle(e.target.value)}><option value={-1}>Off</option>{info?.streams.filter(s => s.Type === 'Subtitle').map(s => <option key={s.Index} value={s.Index}>{s.DisplayTitle || s.Language || `Track ${s.Index}`}</option>)}</select></label>
+      <MenuButton icon={Gauge} label="Quality" value={options.max_bitrate || 20000000} onChange={v => change({max_bitrate: v, force_transcode: true})} options={[{value: 20000000, label: 'Auto · up to 20 Mbps'}, {value: 8000000, label: '8 Mbps'}, {value: 4000000, label: '4 Mbps'}, {value: 1500000, label: '1.5 Mbps'}]}/>
+      {!!info?.sources.length && <MenuButton icon={Layers} label="Version" value={info.source_id} onChange={v => change({media_source_id: v})} options={info.sources.map(s => ({value: s.id, label: s.name}))}/>}
+      <MenuButton icon={AudioLines} label="Audio" value={options.audio_index ?? ''} onChange={v => change({audio_index: v === '' ? null : v, force_transcode: true})} options={[{value: '', label: 'Default'}, ...(info?.streams.filter(s => s.Type === 'Audio').map(s => ({value: s.Index, label: s.DisplayTitle || s.Language || `Track ${s.Index}`})) || [])]}/>
+      <MenuButton icon={Captions} label="Subtitles" value={subtitle} onChange={selectSubtitle} options={[{value: -1, label: 'Off'}, ...(info?.streams.filter(s => s.Type === 'Subtitle').map(s => ({value: s.Index, label: s.DisplayTitle || s.Language || `Track ${s.Index}`})) || [])]}/>
       {subtitle !== -1 && <label className="text-xs text-muted"><span className="flex items-center gap-1.5"><Timer size={13}/>Subtitle delay (s)</span><input type="number" step="0.25" min="-30" max="30" className="field mt-1 w-28" value={offset} onChange={e => setOffset(Number(e.target.value))}/></label>}
-      {!!item.Chapters?.length && <label className="text-xs text-muted"><span className="flex items-center gap-1.5"><BookOpen size={13}/>Chapters</span><select className="field mt-1 max-w-48" defaultValue="" onChange={e => {if (e.target.value) change({start_ticks: Number(e.target.value)});}}><option value="">Jump to chapter</option>{item.Chapters.map((c, i) => <option key={i} value={c.StartPositionTicks}>{c.Name || `Chapter ${i + 1}`}</option>)}</select></label>}
+      {!!item.Chapters?.length && <MenuButton icon={BookOpen} label="Chapters" value={null} onChange={v => change({start_ticks: v})} options={item.Chapters.map((c, i) => ({value: c.StartPositionTicks, label: c.Name || `Chapter ${i + 1}`}))}/>}
       <button className="btn-secondary text-xs" onClick={() => change({force_transcode: true})}>Compatibility mode</button>
     </div></div>
   </div>;

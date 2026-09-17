@@ -4,14 +4,18 @@ from pathlib import Path
 
 import redis.asyncio as redis
 from fastapi import FastAPI, HTTPException, Request
+from pydantic import SecretStr
 from redis.exceptions import RedisError
 from starlette.responses import FileResponse, JSONResponse
 
 from backend.config import get_settings
-from backend.routers import auth, livetv, media, playback, proxy
+from backend.routers import auth, integrations, livetv, media, playback, proxy
 from backend.services.auth_service import AuthService
 from backend.services.jellyfin_client import JellyfinClient
 from backend.services.mcp_server import MCPGuard, create_mcp
+from backend.services.secret_store import SecretStore, load_or_create_key
+from backend.services.seerr_client import SeerrClient
+from backend.services.whisparr_client import WhisparrClient
 
 logger = logging.getLogger('jishflix')
 
@@ -53,6 +57,9 @@ class SecurityHeaders:
 
 def create_app(settings=None, redis_client=None, upstream_transport=None):
     settings = settings or get_settings()
+    if not settings.secret_key:
+        settings.secret_key = SecretStr(load_or_create_key(Path(settings.data_dir) / 'master.key'))
+    secret_store = SecretStore(settings.secret_key.get_secret_value(), Path(settings.data_dir) / 'integrations.json')
 
     @asynccontextmanager
     async def lifespan(app):
@@ -69,6 +76,10 @@ def create_app(settings=None, redis_client=None, upstream_transport=None):
     app = FastAPI(title='Jishflix Cinematic', version='1.0.0', lifespan=lifespan,
                   description='Cinematic Jellyfin gateway. Complete upstream API is available under /api/jellyfin/.')
     app.state.settings = settings
+    app.state.secrets = secret_store
+    app.state.upstream_transport = upstream_transport
+    app.state.seerr = SeerrClient(secret_store, upstream_transport)
+    app.state.whisparr = WhisparrClient(secret_store, upstream_transport)
     app.add_middleware(SecurityHeaders, settings=settings)
 
     @app.exception_handler(RedisError)
@@ -86,7 +97,7 @@ def create_app(settings=None, redis_client=None, upstream_transport=None):
         await app.state.jellyfin.request('GET', 'System/Info/Public')
         return {'status': 'ready'}
 
-    for router in (auth.router, media.router, playback.router, livetv.router, proxy.router):
+    for router in (auth.router, media.router, playback.router, livetv.router, proxy.router, integrations.router):
         app.include_router(router)
 
     mcp = create_mcp(app.state, settings)

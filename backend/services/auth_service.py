@@ -1,13 +1,13 @@
-import base64
 import hashlib
 import json
 import secrets
 from typing import Annotated
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import InvalidToken
 from fastapi import Depends, HTTPException, Request
 
 from backend.config import Settings
+from backend.services.secret_store import derive_cipher
 
 COOKIE = 'jishflix_session'
 
@@ -15,7 +15,7 @@ COOKIE = 'jishflix_session'
 class AuthService:
     def __init__(self, settings: Settings, redis, jellyfin):
         self.settings, self.redis, self.jellyfin = settings, redis, jellyfin
-        self.cipher = Fernet(base64.urlsafe_b64encode(hashlib.sha256(settings.secret_key.get_secret_value().encode()).digest()))
+        self.cipher = derive_cipher(settings.secret_key.get_secret_value())
 
     @staticmethod
     def key(token: str) -> str:
@@ -68,9 +68,13 @@ async def current_session(request: Request):
 Session = Annotated[dict, Depends(current_session)]
 
 
+def is_administrator(user: dict) -> bool:
+    return bool(user.get('Policy', {}).get('IsAdministrator'))
+
+
 async def require_admin(request: Request, session: dict):
     # Always revalidate upstream policy for privileged operations; never trust cached roles.
     user = await request.app.state.jellyfin.request('GET', 'Users/Me', session)
-    if not user.get('Policy', {}).get('IsAdministrator'):
+    if not is_administrator(user):
         raise HTTPException(403, 'Administrator access required')
     return user

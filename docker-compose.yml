@@ -6,12 +6,14 @@ services:
     environment:
       JELLYFIN_URL: ${JELLYFIN_URL:-http://host.docker.internal:8096}
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env to a random secret of at least 32 characters}
+      # Optional: if unset, a random key is generated on first start and kept in
+      # the jishflix_data volume (0600, jishflix user only) instead of the environment.
+      SECRET_KEY: ${SECRET_KEY:-}
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       SESSION_TTL: ${SESSION_TTL:-604800}
-      IPTV_M3U_URL: ${IPTV_M3U_URL:-}
-      IPTV_XMLTV_URL: ${IPTV_XMLTV_URL:-}
+    volumes:
+      - jishflix_data:/app/data
     ports:
       - '127.0.0.1:8000:8000'
     extra_hosts:
@@ -50,3 +52,5 @@ services:
       - no-new-privileges:true
 networks:
   internal:
+volumes:
+  jishflix_data:

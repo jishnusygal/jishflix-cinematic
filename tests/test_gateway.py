@@ -154,6 +154,58 @@ async def test_rate_limit(environment):
     assert error.value.status_code == 429
 
 
+async def test_configure_iptv_requires_configuration(logged_in):
+    _, client, _ = logged_in
+    result = await client.post('/api/livetv/configure-iptv')
+    assert result.status_code == 422
+
+
+async def test_configure_iptv_derives_urls_from_gateway(logged_in):
+    app, client, calls = logged_in
+    app.state.secrets.save('iptv_gtw', 'http://iptv-gtw:8000', 'gateway-export-token')
+    result = await client.post('/api/livetv/configure-iptv')
+    assert result.status_code == 200
+    tuner_body = json.loads(next(c for c in calls if c.url.path.endswith('/LiveTv/TunerHosts')).content)
+    assert tuner_body['Url'] == 'http://iptv-gtw:8000/playlist.m3u?token=gateway-export-token'
+    listing_body = json.loads(next(c for c in calls if c.url.path.endswith('/LiveTv/ListingProviders')).content)
+    assert listing_body['Path'] == 'http://iptv-gtw:8000/epg.xml?token=gateway-export-token'
+
+
+async def test_integrations_status_and_save_roundtrip(logged_in):
+    app, client, _ = logged_in
+    before = (await client.get('/api/integrations/status')).json()
+    assert before['seerr'] == {'configured': False, 'url': None}
+    result = await client.post('/api/integrations/seerr', json={'url': 'http://seerr', 'secret': 'seerr-key'})
+    assert result.status_code == 200
+    after = (await client.get('/api/integrations/status')).json()
+    assert after['seerr'] == {'configured': True, 'url': 'http://seerr'}
+    assert 'seerr-key' not in str(after)
+
+
+async def test_integrations_save_tests_iptv_gtw_with_real_playlist_response(logged_in):
+    app, client, _ = logged_in
+    calls = []
+
+    def upstream(request):
+        calls.append(request)
+        return httpx.Response(200, text='#EXTM3U\n', headers={'Content-Type': 'audio/x-mpegurl'})
+
+    app.state.upstream_transport = httpx.MockTransport(upstream)
+    result = await client.post('/api/integrations/iptv_gtw', json={'url': 'http://iptv-gtw:8000', 'secret': 'export-token'})
+    assert result.status_code == 200
+    assert calls[-1].url.path == '/playlist.m3u'
+    assert calls[-1].url.params['token'] == 'export-token'
+    assert (await client.get('/api/integrations/status')).json()['iptv_gtw'] == {'configured': True, 'url': 'http://iptv-gtw:8000'}
+
+
+async def test_integrations_save_rejects_failed_connection_test(logged_in):
+    app, client, _ = logged_in
+    app.state.seerr.transport = httpx.MockTransport(lambda request: httpx.Response(401, json={'detail': 'bad key'}))
+    result = await client.post('/api/integrations/seerr', json={'url': 'http://seerr', 'secret': 'wrong-key'})
+    assert result.status_code == 401
+    assert (await client.get('/api/integrations/status')).json()['seerr'] == {'configured': False, 'url': None}
+
+
 async def test_upstream_timeout_and_status(environment):
     app, _, _ = environment
     with pytest.raises(HTTPException) as error:

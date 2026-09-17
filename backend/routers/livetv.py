@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from backend.services.auth_service import Session, require_admin
+from backend.services.secret_store import iptv_gtw_urls
 
 router = APIRouter(prefix='/api/livetv', tags=['Live TV'])
 
@@ -50,19 +51,19 @@ async def cancel(timer_id: str, request: Request, session: Session):
 
 @router.post('/configure-iptv')
 async def configure_iptv(request: Request, session: Session):
-    from fastapi import HTTPException
     await require_admin(request, session)
-    settings = request.app.state.settings
-    if not settings.iptv_m3u_url or not settings.iptv_xmltv_url:
-        raise HTTPException(422, 'Configure IPTV_M3U_URL and IPTV_XMLTV_URL on the server first')
+    url, token = request.app.state.secrets.get('iptv_gtw')
+    if not url or not token:
+        raise HTTPException(422, 'Configure the IPTV gateway in the integrations setup first')
+    m3u_url, epg_url = iptv_gtw_urls(url, token)
     client = request.app.state.jellyfin
     info = await client.request('GET', 'LiveTv/Info', session)
-    tuner = next((t for t in info.get('TunerHosts', []) if t.get('Url') == settings.iptv_m3u_url), None)
+    tuner = next((t for t in info.get('TunerHosts', []) if t.get('Url') == m3u_url), None)
     if not tuner:
         tuner = await client.request('POST', 'LiveTv/TunerHosts', session,
-            body={'Type': 'm3u', 'Url': settings.iptv_m3u_url, 'FriendlyName': 'iptv-gtw', 'EnableAllTuners': True})
+            body={'Type': 'm3u', 'Url': m3u_url, 'FriendlyName': 'iptv-gtw', 'EnableAllTuners': True})
     providers = info.get('ListingProviders', [])
-    if not any(p.get('Path') == settings.iptv_xmltv_url for p in providers):
+    if not any(p.get('Path') == epg_url for p in providers):
         await client.request('POST', 'LiveTv/ListingProviders', session,
-            body={'Type': 'xmltv', 'Path': settings.iptv_xmltv_url, 'EnableAllTuners': True})
+            body={'Type': 'xmltv', 'Path': epg_url, 'EnableAllTuners': True})
     return {'configured': True, 'tuner': tuner}

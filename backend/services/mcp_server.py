@@ -9,6 +9,8 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from backend.services.auth_service import is_administrator
+
 identity: ContextVar[str] = ContextVar('mcp_identity')
 
 
@@ -22,6 +24,11 @@ def create_mcp(state, settings):
         # Resolve each call, so an open SSE connection cannot outlive revoked credentials.
         session = await state.auth.resolve(identity.get())
         return state.jellyfin, session
+
+    async def require_admin(client, session):
+        user = await client.request('GET', 'Users/Me', session)
+        if not is_administrator(user):
+            raise ValueError('Administrator access required')
 
     @mcp.tool()
     async def search_media_library(query: str, limit: int = 20) -> dict:
@@ -53,11 +60,40 @@ def create_mcp(state, settings):
     async def trigger_media_sync() -> dict:
         """Request a Jellyfin library scan. Requires a current administrator role; changes server state."""
         client, session = await context()
-        user = await client.request('GET', 'Users/Me', session)
-        if not user.get('Policy', {}).get('IsAdministrator'):
-            raise ValueError('Administrator access required')
+        await require_admin(client, session)
         await client.request('POST', 'Library/Refresh', session)
         return {'accepted': True}
+
+    @mcp.tool()
+    async def request_movie_or_show(title: str, media_type: str = 'movie') -> dict:
+        """Search Seerr and request a movie or TV show to be added to the library.
+        Requires a current administrator role. media_type must be 'movie' or 'tv'."""
+        client, session = await context()
+        await require_admin(client, session)
+        if not state.seerr.configured:
+            raise ValueError('Seerr is not configured on this server')
+        if media_type not in ('movie', 'tv'):
+            raise ValueError("media_type must be 'movie' or 'tv'")
+        results = await state.seerr.search(title)
+        match = next((r for r in results if r.get('mediaType') == media_type), None)
+        if not match:
+            raise ValueError(f'No {media_type} match found on Seerr for "{title}"')
+        result = await state.seerr.request_media(media_type, match['id'])
+        return {'requested': True, 'title': match.get('title') or match.get('name'), 'seerr_id': result.get('id')}
+
+    @mcp.tool()
+    async def request_adult_scene(title: str) -> dict:
+        """Search Whisparr and add a matching adult scene/studio release. Requires a current
+        administrator role; this triggers an automatic search and download with no approval step."""
+        client, session = await context()
+        await require_admin(client, session)
+        if not state.whisparr.configured:
+            raise ValueError('Whisparr is not configured on this server')
+        results = await state.whisparr.lookup(title)
+        if not results:
+            raise ValueError(f'No match found on Whisparr for "{title}"')
+        added = await state.whisparr.add(results[0])
+        return {'added': True, 'title': added.get('title'), 'whisparr_id': added.get('id')}
 
     return mcp
 

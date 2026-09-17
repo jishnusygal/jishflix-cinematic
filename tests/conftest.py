@@ -10,7 +10,7 @@ ITEM = {'Id': 'movie', 'Name': 'Test Movie', 'Type': 'Movie'}
 
 
 @pytest_asyncio.fixture
-async def environment():
+async def environment(tmp_path):
     calls = []
 
     def upstream(request):
@@ -40,7 +40,8 @@ async def environment():
             return httpx.Response(204)
         return httpx.Response(200, json={'Items': [ITEM], 'TotalRecordCount': 1})
 
-    settings = Settings(secret_key='test-secret-' * 4, jellyfin_url='http://jellyfin/base', public_url='http://testserver', cookie_secure=False)
+    settings = Settings(secret_key='test-secret-' * 4, jellyfin_url='http://jellyfin/base', public_url='http://testserver',
+                         cookie_secure=False, data_dir=str(tmp_path))
     redis = FakeRedis()
     app = create_app(settings, redis, httpx.MockTransport(upstream))
     async with app.router.lifespan_context(app):

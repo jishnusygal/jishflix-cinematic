@@ -17,6 +17,7 @@ WORKDIR /app
 COPY --from=dependencies /opt/venv /opt/venv
 COPY --chown=jishflix:jishflix backend ./backend
 COPY --from=frontend --chown=jishflix:jishflix /build/frontend/dist ./frontend/dist
+RUN mkdir -p /app/data && chown jishflix:jishflix /app/data
 USER jishflix
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)"

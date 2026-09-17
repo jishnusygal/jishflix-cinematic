@@ -12,23 +12,41 @@ from backend.config import Settings
 from backend.main import create_app
 
 
-async def test_sse_initialize_tools_revocation_and_identity():
+async def test_sse_initialize_tools_revocation_and_identity(tmp_path):
     sock = socket.socket()
     sock.bind(('127.0.0.1', 0))
     sock.listen(128)
     port = sock.getsockname()[1]
     origin = f'http://127.0.0.1:{port}'
     calls = []
+    is_admin = False
 
     def upstream(request):
         calls.append(request)
-        if request.url.path == '/Users/Me':
-            return httpx.Response(200, json={'Id': 'alice', 'Policy': {'IsAdministrator': False}})
-        if request.url.path == '/Sessions':
+        path = request.url.path
+        if path == '/Users/Me':
+            return httpx.Response(200, json={'Id': 'alice', 'Policy': {'IsAdministrator': is_admin}})
+        if path == '/Sessions':
             return httpx.Response(200, json=[{'Id': 'a', 'UserId': 'alice', 'RemoteEndPoint': 'secret'}, {'Id': 'b', 'UserId': 'bob'}])
+        if path == '/api/v1/search':
+            return httpx.Response(200, json={'results': [{'id': 603, 'mediaType': 'movie', 'title': 'The Matrix'}]})
+        if path == '/api/v1/request':
+            return httpx.Response(200, json={'id': 42})
+        if path == '/api/v3/series/lookup':
+            return httpx.Response(200, json=[{'title': 'Example Studio', 'foreignId': 'abc'}])
+        if path == '/api/v3/rootfolder':
+            return httpx.Response(200, json=[{'id': 1, 'path': '/data/adult'}])
+        if path == '/api/v3/qualityprofile':
+            return httpx.Response(200, json=[{'id': 1, 'name': 'HD'}])
+        if path == '/api/v3/series':
+            return httpx.Response(200, json={'id': 7, 'title': 'Example Studio'})
         return httpx.Response(200, json={'Items': [{'Id': 'film', 'Name': 'A Film'}]})
 
-    app = create_app(Settings(secret_key='mcp-test-key-' * 4, public_url=origin, jellyfin_url='http://upstream', cookie_secure=False), FakeRedis(), httpx.MockTransport(upstream))
+    settings = Settings(secret_key='mcp-test-key-' * 4, public_url=origin, jellyfin_url='http://upstream',
+                         cookie_secure=False, data_dir=str(tmp_path))
+    app = create_app(settings, FakeRedis(), httpx.MockTransport(upstream))
+    app.state.secrets.save('seerr', 'http://seerr', 'seerr-key')
+    app.state.secrets.save('whisparr', 'http://whisparr', 'whisparr-key')
     server = uvicorn.Server(uvicorn.Config(app, log_level='error', lifespan='on', ws='none'))
     task = asyncio.create_task(server.serve(sockets=[sock]))
     try:
@@ -45,7 +63,8 @@ async def test_sse_initialize_tools_revocation_and_identity():
                 result = await client.initialize()
                 assert result.serverInfo.name == 'Jishflix Cinematic'
                 names = {t.name for t in (await client.list_tools()).tools}
-                assert names == {'search_media_library', 'get_continue_watching', 'check_stream_status', 'trigger_media_sync'}
+                assert names == {'search_media_library', 'get_continue_watching', 'check_stream_status',
+                                  'trigger_media_sync', 'request_movie_or_show', 'request_adult_scene'}
                 found = await client.call_tool('search_media_library', {'query': 'film'})
                 assert not found.isError
                 assert calls[-1].url.params['UserId'] == 'alice'
@@ -55,6 +74,16 @@ async def test_sse_initialize_tools_revocation_and_identity():
                 denied = await client.call_tool('trigger_media_sync')
                 assert denied.isError
                 assert not any(r.url.path == '/Library/Refresh' for r in calls)
+                assert (await client.call_tool('request_movie_or_show', {'title': 'Matrix'})).isError
+                assert (await client.call_tool('request_adult_scene', {'title': 'Example'})).isError
+                assert not any(r.url.path in ('/api/v1/request', '/api/v3/series') for r in calls)
+                is_admin = True
+                requested = await client.call_tool('request_movie_or_show', {'title': 'Matrix'})
+                assert not requested.isError
+                assert any(r.url.path == '/api/v1/request' for r in calls)
+                added = await client.call_tool('request_adult_scene', {'title': 'Example'})
+                assert not added.isError
+                assert any(r.url.path == '/api/v3/series' for r in calls)
                 session_keys = [key async for key in app.state.redis.scan_iter('mcp:*')]
                 assert len(session_keys) == 1
                 sid = session_keys[0].decode().split(':', 1)[1]

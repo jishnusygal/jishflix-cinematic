@@ -26,4 +26,6 @@
   .eyebrow { @apply text-[11px] font-semibold uppercase tracking-[.24em] text-accent; }
   .glass { @apply border border-white/10 bg-slate-950/80 shadow-cinema backdrop-blur-xl; }
   .media-focus { @apply transition-all duration-200 focus-visible:scale-105 focus-visible:ring-2 focus-visible:ring-cyan-500; }
+  .hero-fade { animation: hero-fade 1s ease; }
 }
+@keyframes hero-fade { from { opacity: 0; } to { opacity: 1; } }

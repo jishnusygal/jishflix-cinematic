@@ -23,3 +23,4 @@ export function artwork(item, backdrop = false) {
 }
 export const minutes = ticks => Math.round((ticks || 0) / 600000000);
 export const timeLabel = ticks => { const m = minutes(ticks); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
+export const youtubeId = url => url?.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/|videoid=)([\w-]{11})/)?.[1] || null;

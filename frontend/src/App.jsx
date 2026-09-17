@@ -18,12 +18,18 @@ function Loading({text = 'Finding your next great story…'}) {return <div class
 function ErrorState({message, retry}) {return <div role="alert" className="mx-6 my-32 rounded-xl border border-red-400/20 bg-red-500/5 p-8"><h2 className="text-xl font-semibold">Something interrupted the show.</h2><p className="my-4 text-sm text-red-200">{message}</p><button className="btn-secondary" onClick={retry}>Try again</button></div>;}
 
 function Home({onSelect, onPlay, revision}) {
-  const [data, setData] = useState(null), [error, setError] = useState(''), [attempt, setAttempt] = useState(0);
-  useEffect(() => {let active = true; api('/media/home').then(result => {if(active) {setData(result); setError('');}}).catch(e => {if(active) setError(e.message);}); return () => {active = false;};}, [attempt, revision]);
+  const [data, setData] = useState(null), [error, setError] = useState(''), [attempt, setAttempt] = useState(0), [heroIndex, setHeroIndex] = useState(0);
+  useEffect(() => {let active = true; api('/media/home').then(result => {if(active) {setData(result); setError(''); setHeroIndex(0);}}).catch(e => {if(active) setError(e.message);}); return () => {active = false;};}, [attempt, revision]);
+  const backdropped = data ? [...new Map([...data.discover, ...data.recent].filter(i => i.BackdropImageTags?.length).map(i => [i.Id, i])).values()].slice(0, 5) : [];
+  const heroes = backdropped.length ? backdropped : (data?.recent[0] ? [data.recent[0]] : []);
+  useEffect(() => {
+    if (heroes.length < 2) return;
+    const timer = setInterval(() => setHeroIndex(i => (i + 1) % heroes.length), 9000);
+    return () => clearInterval(timer);
+  }, [heroes.length]);
   if (error) return <ErrorState message={error} retry={() => setAttempt(a => a + 1)}/>;
   if (!data) return <Loading/>;
-  const hero = data.discover.find(i => i.BackdropImageTags?.length) || data.recent[0];
-  return <><HeroBanner item={hero} onPlay={onPlay} onSelect={onSelect}/><div className="relative -mt-8 pb-8"><MediaRow title="Pick up where you left off" subtitle="Your stories are waiting." items={data.continue} onSelect={onSelect} wide/><MediaRow title="Up next" items={data.next_up} onSelect={onSelect} wide/><MediaRow title="Fresh in your library" items={data.recent} onSelect={onSelect}/><MediaRow title="Worth a night in" subtitle="Top-rated in your collection" items={data.discover} onSelect={onSelect}/><MediaRow title="Your list, your kind of cinema" items={data.favorites} onSelect={onSelect}/></div></>;
+  return <><HeroBanner item={heroes[heroIndex]} onPlay={onPlay} onSelect={onSelect} total={heroes.length} active={heroIndex} onPick={setHeroIndex}/><div className="relative -mt-8 pb-8"><MediaRow title="Pick up where you left off" subtitle="Your stories are waiting." items={data.continue} onSelect={onSelect} wide/><MediaRow title="Up next" items={data.next_up} onSelect={onSelect} wide/><MediaRow title="Fresh in your library" items={data.recent} onSelect={onSelect}/><MediaRow title="Worth a night in" subtitle="Top-rated in your collection" items={data.discover} onSelect={onSelect}/><MediaRow title="Your list, your kind of cinema" items={data.favorites} onSelect={onSelect}/></div></>;
 }
 
 function Browse({user, onSelect}) {

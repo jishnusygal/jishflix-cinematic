@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query, Request
 from backend.services.auth_service import Session
 
 router = APIRouter(prefix='/api/media', tags=['Media'])
-FIELDS = 'Overview,Genres,MediaSources,Chapters,PrimaryImageAspectRatio,DateCreated'
+FIELDS = 'Overview,Genres,MediaSources,Chapters,PrimaryImageAspectRatio,DateCreated,RemoteTrailers'
 
 
 @router.get('/home')
@@ -46,7 +46,7 @@ async def items(request: Request, session: Session, search: str = '', types: str
 
 @router.get('/items/{item_id}')
 async def item(item_id: str, request: Request, session: Session):
-    return await request.app.state.jellyfin.request('GET', f'Users/{session["user_id"]}/Items/{item_id}', session)
+    return await request.app.state.jellyfin.request('GET', f'Users/{session["user_id"]}/Items/{item_id}', session, params={'Fields': FIELDS})
 
 
 @router.get('/items/{item_id}/children')

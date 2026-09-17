@@ -17,6 +17,7 @@ export function artwork(item, backdrop = false) {
   let id = item.Id, type = 'Primary', tag = item.ImageTags?.Primary;
   if (backdrop && item.BackdropImageTags?.length) { type = 'Backdrop'; tag = item.BackdropImageTags[0]; }
   else if (backdrop && item.ParentBackdropItemId) { id = item.ParentBackdropItemId; type = 'Backdrop'; tag = item.ParentBackdropImageTags?.[0]; }
+  else if (!tag && type === 'Primary' && item.AlbumId && item.AlbumPrimaryImageTag) { id = item.AlbumId; tag = item.AlbumPrimaryImageTag; }
   if (!tag && type === 'Primary') return null;
   return `/api/jellyfin/Items/${encodeURIComponent(id)}/Images/${type}?maxWidth=${backdrop ? 1920 : 480}&quality=85&tag=${encodeURIComponent(tag || '')}`;
 }
